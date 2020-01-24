@@ -1,6 +1,6 @@
 .vscode
 Data/*.parquet
-Data/*.csv
+**/*.csv
 Data/*.png
 .ipynb_checkpoints/
 

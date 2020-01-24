@@ -4,6 +4,7 @@ from matplotlib.image import imsave
 import cv2
 import os
 import gc
+from fastai.vision import ImageList, get_transforms
 
 
 def bbox(img):
@@ -56,3 +57,31 @@ def save_imgs(train_dir: str, size=(236, 137)):
                        cmap='gray')
             gc.collect()
             print("Done.")
+
+
+def load_imgs(data_dir: str,
+              bs,
+              sz=128,
+              nfolds=4,
+              fold=0,
+              stats=(
+                  [0.0692],
+                  [0.2051],
+              )):
+    print("Loading images...")
+    train_df = pd.read_csv(f"{data_dir}/train.csv")
+    label_cols = ['grapheme_root', 'vowel_diacritic', 'consonant_diacritic']
+    data = ImageList.from_df(
+        train_df,
+        path='',
+        folder=data_dir,
+        suffix='.png',
+        cols='image_id',
+        convert_mode='L') \
+        .split_by_idx(range(fold * len(train_df) // nfolds, (fold + 1) * len(train_df) // nfolds)) \
+        .label_from_df(cols=label_cols) \
+        .transform(get_transforms(do_flip=False, max_warp=0.1), size=sz, padding_mode='zeros') \
+        .databunch(bs=bs)
+    data = data.normalize(stats)
+    print(f"Successfully read images from {data_dir}.")
+    return data
