@@ -1,30 +1,39 @@
-import torch
-from torch import nn
-from fastai.vision.models import resnet18
 from functools import partial
+from warnings import warn
+
+import torch
 from fastai.callback import Callback
 from fastai.layers import AdaptiveConcatPool2d, relu, Flatten, bn_drop_lin
+from fastai.metrics import add_metrics
+from fastai.vision.models import resnet18
+from torch import nn
 
 
 class Head(nn.Module):
     def __init__(self, nc, n, ps=0.5):
         super().__init__()
-        layers = [AdaptiveConcatPool2d(), relu(), Flatten()] + \
-            bn_drop_lin(nc*2, 512, True, ps, relu()) + \
-            bn_drop_lin(512, n, True, ps)
-        self.fc = nn.Sequential(*layers)
+        self.pool = AdaptiveConcatPool2d()
+        self.relu = relu()
+        self.flatten = Flatten()
+        self.fc1 = nn.Sequential(*bn_drop_lin(nc * 2, 512, True, ps, relu()))
+        self.fc2 = nn.Sequential(*bn_drop_lin(512, n, True, ps))
         self._init_weight()
 
     def _init_weight(self):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                torch.nn.init.kaiming_normal_(m.weight)
+                nn.init.kaiming_normal_(m.weight)
             elif isinstance(m, nn.BatchNorm2d):
                 m.weight.data.fill_(1.0)
                 m.bias.data.zero_()
 
     def forward(self, x):
-        return self.fc(x)
+        x = self.pool(x)
+        x = self.relu(x)
+        x = self.flatten(x)
+        x = self.fc1(x)
+        x = self.fc2(x)
+        return x
 
 
 # change the first conv to accept 1 chanel input
@@ -44,12 +53,12 @@ class Rnet_1ch(nn.Module):
                          padding=1,
                          dilation=1,
                          ceil_mode=False), m.layer1)
-        self.layer2 = nn.Sequential(m.layer2)
-        self.layer3 = nn.Sequential(m.layer3)
-        self.layer4 = nn.Sequential(m.layer4)
+        self.layer2 = m.layer2
+        self.layer3 = m.layer3
+        self.layer4 = m.layer4
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))  # m.avgpool
 
-        # nc = self.layer4[-1].weight.shape[0]
+        #nc = self.layer4[-1].weight.shape[0]
         nc = 512
         self.head1 = Head(nc, n[0])
         self.head2 = Head(nc, n[1])
@@ -62,7 +71,6 @@ class Rnet_1ch(nn.Module):
         x = self.layer3(x)
         x = self.layer4(x)
         x = self.avgpool(x)
-        # x = x.view(x.size(0),-1)
         x1 = self.head1(x)
         x2 = self.head2(x)
         x3 = self.head3(x)
@@ -94,10 +102,12 @@ class Metric_idx(Callback):
         if self.n_classes == 0:
             self.n_classes = last_output.shape[-1]
             self.x = torch.arange(0, self.n_classes)
-        cm = ((preds==self.x[:, None]) & (targs==self.x[:, None, None])) \
-          .sum(dim=2, dtype=torch.float32)
-        if self.cm is None: self.cm = cm
-        else: self.cm += cm
+        cm = ((preds == self.x[:, None]) & (targs == self.x[:, None, None])) \
+            .sum(dim=2, dtype=torch.float32)
+        if self.cm is None:
+            self.cm = cm
+        else:
+            self.cm += cm
 
     def _weights(self, avg: str):
         if self.n_classes != 2 and avg == "binary":
@@ -109,22 +119,25 @@ class Metric_idx(Callback):
                 self.pos_label = 1
                 warn("Invalid value for pos_label. It has now been set to 1.")
             if self.pos_label == 1:
-                return Tensor([0, 1])
+                return torch.Tensor([0, 1])
             else:
-                return Tensor([1, 0])
+                return torch.Tensor([1, 0])
         elif avg == "micro":
             return self.cm.sum(dim=0) / self.cm.sum()
         elif avg == "macro":
-            return torch.ones((self.n_classes, )) / self.n_classes
+            return torch.ones((self.n_classes,)) / self.n_classes
         elif avg == "weighted":
             return self.cm.sum(dim=1) / self.cm.sum()
 
     def _recall(self):
         rec = torch.diag(self.cm) / (self.cm.sum(dim=1) + self.eps)
-        if self.average is None: return rec
+        if self.average is None:
+            return rec
         else:
-            if self.average == "micro": weights = self._weights(avg="weighted")
-            else: weights = self._weights(avg=self.average)
+            if self.average == "micro":
+                weights = self._weights(avg="weighted")
+            else:
+                weights = self._weights(avg=self.average)
             return (rec * weights).sum()
 
     def on_epoch_end(self, last_metrics, **kwargs):
@@ -157,4 +170,4 @@ class Metric_tot(Callback):
     def on_epoch_end(self, last_metrics, **kwargs):
         return add_metrics(
             last_metrics, 0.5 * self.grapheme._recall() +
-            0.25 * self.vowel._recall() + 0.25 * self.consonant._recall())
+                          0.25 * self.vowel._recall() + 0.25 * self.consonant._recall())

@@ -5,3 +5,4 @@ Data/*.png
 .ipynb_checkpoints/
 
 __pycache__/
+.idea

@@ -1,7 +1,3 @@
-pandas==0.25.1
-numpy==1.17.2
-matplotlib==3.1.1
-opencv==3.4.2
-torchvision==0.4.2
-pyarrow==0.13.0
-fastai=1.0.60=1
+fastai~=1.0.60
+opencv-python~=3.4.9.31
+pyarrow~=0.13.0
