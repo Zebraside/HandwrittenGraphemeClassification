@@ -62,13 +62,14 @@ if __name__ == '__main__':
     argparser.add_argument('--models_path', type=str, required=True)
     argparser.add_argument('--num_workers', type=int, default=2)
     argparser.add_argument('--parquet_dir', type=str, required=True)
+    argparser.add_argument('--csv_dir', type=str, required=True)
     args = argparser.parse_args()
 
     stats = (0.0692, 0.2051)
 
     parquets = [f'{args.parquet_dir}/test_image_data_{fold}.parquet' for fold in [0, 1, 2, 3]]
 
-    LABELS = '../input/bengaliai-cv19/train.csv'
+    LABELS = f'{args.csv_dir}/train.csv'
 
     df = pd.read_csv(LABELS)
     nunique = list(df.nunique())[1:-1]
